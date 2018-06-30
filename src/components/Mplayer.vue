@@ -9,66 +9,79 @@
     <audio :src="fileURI" id='player' loop></audio>
     <!--先制作小型播放器-->
     <div class="mini-container">
-      <div class="mini-cover" :style="`height:${heightOp}px;width:${widthOp}px`">
+      <div class="mini-cover"
+           id="mini-cover"
+           @mouseover="menuIn"
+           @mousemove="doDrag"
+           @mousedown="startDrag"
+           @mouseup="endDrag"
+           :style="`height:${heightOp}px;width:${widthOp}px`">
         <div class="progress" :style="'width:'+progress*widthOp+'px;'"></div>
+        <div class="lrc">{{currentLrc}}</div>
       </div>
       <div class="button round button-1" @click="selFile" v-if="!loaded">
         <div class="button-file"></div>
       </div>
-      <transition name="fade">
-        <div class="button-mini round disabled back" v-show="functionVisible_0">
-          <div></div>
-        </div>
-      </transition>
-      <transition name="fade">
-        <div class="button-mini round disabled front" v-show="functionVisible_1">
-          <div></div>
-        </div>
-      </transition>
-      <div class="button round button-1" @click="switchPlay" v-if="loaded">
-        <transition name="fade">
-          <div class="button-play" v-show="!playing"></div>
-        </transition>
-        <transition name="fade">
-          <div class="button-pause" v-show="playing"></div>
-        </transition>
-      </div>
-      <transition name="fade">
-        <div class="button no-border button-2" @click="unloadFile" v-show="functionVisible_2">
-          <div class="button-unload"></div>
-        </div>
-      </transition>
       <transition name="normalfade">
-        <div class="voice-menu"
-             v-show="menuVisible_0"
-             id="voice-menu"
-             @mouseover="entered"
-             @mouseout="leaved"
-             @mousedown="volumeDown"
-             @mousemove="volumeMove"
-             @mouseup="volumeUp"
-        >
-          <div class="menu"></div>
-          <div class="volume" :style="'height:'+volume*90+'px;'">
-            <div class="menu active"></div>
+        <div v-show="menuVisible_1">
+          <transition name="fade">
+            <div class="button-mini round disabled back" v-show="functionVisible_0">
+              <div></div>
+            </div>
+          </transition>
+          <transition name="fade">
+            <div class="button-mini round disabled front" v-show="functionVisible_1">
+              <div></div>
+            </div>
+          </transition>
+          <div class="button round button-1" @click="switchPlay" v-if="loaded">
+            <transition name="fade">
+              <div class="button-play" v-show="!playing"></div>
+            </transition>
+            <transition name="fade">
+              <div class="button-pause" v-show="playing"></div>
+            </transition>
           </div>
+          <transition name="fade">
+            <div class="button no-border button-2" @click="unloadFile" v-show="functionVisible_2">
+              <div class="button-unload"></div>
+            </div>
+          </transition>
+          <transition name="normalfade">
+            <div class="voice-menu"
+                 v-show="menuVisible_0"
+                 id="voice-menu"
+                 @mouseover="entered"
+                 @mouseout="leaved"
+                 @mousedown="volumeDown"
+                 @mousemove="volumeMove"
+                 @mouseup="volumeUp"
+            >
+              <div class="menu"></div>
+              <div class="volume" :style="'height:'+volume*90+'px;'">
+                <div class="menu active"></div>
+              </div>
+            </div>
+          </transition>
+          <transition name="fade">
+            <div class="button no-border button-3"
+                 @click="mute"
+                 @mouseover="entered"
+                 @mouseout="leaved"
+                 v-show="functionVisible_3">
+              <div :class="`button-voice ${mutedOp}`"></div>
+            </div>
+          </transition>
         </div>
       </transition>
-      <transition name="fade">
-        <div class="button no-border button-3"
-             @click="mute"
-             @mouseover="entered"
-             @mouseout="leaved"
-             v-show="functionVisible_3">
-          <div :class="`button-voice ${mutedOp}`"></div>
-        </div>
-      </transition>
+
 
     </div>
   </div>
 </template>
 
 <script>
+  import {searchMusic,getLRC} from '../api'
   export default {
     name: "player",
     data() {
@@ -83,54 +96,91 @@
             width: 400
           }
         },
-        fileURI:'',
+        fileURI: '',
+        lrc:[],
         playing: false,
         loaded: false,
         muted: false,
 
-        volume:0.8,
-        volumeTemp:0.0,
-        volumeRemember:0.8,
-        volumeChange:false,
+        volume: 0.8,
+        volumeTemp: 0.0,
+        volumeRemember: 0.8,
+        volumeChange: false,
+
+        dragging:false,
 
         functionVisible_0: false,
         functionVisible_1: false,
         functionVisible_2: false,
         functionVisible_3: false,
         menuVisible_0: false,
+        menuVisible_1: true,
 
-        voiceMenu:null,
+        voiceMenu: null,
+        mainMenu:null,
 
-        playTime:0,
-        totalTime:0,
+        currentLrc:'',
+        playTime: 0,
+        totalTime: 0,
+        playInfo:null,
 
-        pauseTimer:null,
-        volumeTimer:null,
+        pauseTimer: null,
+        volumeTimer: null,
+        menuTimer: null,
+        menuTimer2: null,
+
       }
     },
     methods: {
       selFile() {
-        const item=document.getElementById('fileSelector');
+        const item = document.getElementById('fileSelector');
         item.click();
       },
-      loadFile(){
-        const file=document.getElementById('fileSelector');
-        const url=file.files[0];
-        if(url.name.split('.').pop()!=='mp3'){
+      loadFile() {
+        const file = document.getElementById('fileSelector');
+        const url = file.files[0];
+        if (url.name.split('.').pop() !== 'mp3') {
           alert('请选择正确MP3格式文件');
-        }else{
-          const reader=new FileReader();
-          reader.onload=()=>{
-            this.fileURI=reader.result;
-            this.player.oncanplay=()=>{
+        } else {
+          const urn = file.urn || file.name;
+          ID3.loadTags(urn, ()=> {
+            this.playInfo=ID3.getAllTags(urn);
+            // console.log(this.playInfo);
+            searchMusic(this.playInfo.title).then(res=>{
+              if(res.data){
+                if(res.data.song){
+                  getLRC(res.data.song[0].songid).then(res=>{
+                    if(res.data.lrcContent){
+                      this.lrc=this.parseLyric(res.data.lrcContent);
+                    }
+                  })
+                }
+              }
+            })
+          }, {
+            tags: ["title","artist","album","picture"],
+            dataReader: ID3.FileAPIReader(url)
+          });
+          const reader = new FileReader();
+          reader.onload = () => {
+            this.fileURI = reader.result;
+            this.player.oncanplay = () => {
               this.player.play();
-              this.totalTime=this.player.duration;
+              this.totalTime = this.player.duration;
               this.playing = true;
-              this.player.ontimeupdate=()=>{
-                this.playTime=this.player.currentTime;
-                if(!this.muted) this.player.volume=this.volumeTemp;
-                if(this.volumeTemp!==this.volume){
-                  this.volumeTemp+=(this.volume-this.volumeTemp)/3;
+              this.player.ontimeupdate = () => {
+                this.playTime = this.player.currentTime;
+                if(this.lrc.length>0){
+                  for (let i = 0; i < this.lrc.length; i++) {
+                    if(this.lrc[i][0]>this.playTime){
+                      this.currentLrc=this.lrc[i][1];
+                      break;
+                    }
+                  }
+                }
+                if (!this.muted) this.player.volume = this.volumeTemp;
+                if (this.volumeTemp !== this.volume) {
+                  this.volumeTemp += (this.volume - this.volumeTemp) / 3;
                 }
               }
             };
@@ -140,6 +190,18 @@
             }, 300);
             setTimeout(() => {
               this.functionVisible_1 = true;
+              const menuRect=document.getElementById('mini-cover').getBoundingClientRect();
+              this.mainMenu={
+                left:menuRect.left,
+                width:menuRect.width,
+                right:menuRect.right,
+                top:menuRect.top,
+                height:menuRect.height,
+                bottom:menuRect.bottom,
+              };
+              window.addEventListener('mousemove',e=>{
+                this.letMenuOut(e);
+              })
             }, 500);
             setTimeout(() => {
               this.functionVisible_2 = true;
@@ -147,6 +209,10 @@
             setTimeout(() => {
               this.functionVisible_3 = true;
             }, 900);
+            clearTimeout(this.menuTimer2);
+            this.menuTimer2 = setTimeout(() => {
+              this.menuVisible_1 = false;
+            }, 3000)
           };
           reader.readAsDataURL(url);
         }
@@ -154,31 +220,57 @@
       unloadFile() {
         clearTimeout(this.pauseTimer);
         clearTimeout(this.volumeTimer);
+        clearTimeout(this.menuTimer);
+        clearTimeout(this.menuTimer2);
         this.playing = false;
         this.fileURI = '';
         this.functionVisible_0 = false;
         this.functionVisible_1 = false;
         this.functionVisible_2 = false;
         this.functionVisible_3 = false;
-        this.volume=0.8;
-        this.volumeTemp=0.0;
-        this.volumeRemember=0.8;
+        this.volume = 0.8;
+        this.volumeTemp = 0.0;
+        this.volumeRemember = 0.8;
+        this.volumeChange=false;
+        this.dragging=false;
+        this.muted=false;
+        this.player.muted=false;
+        this.playInfo=null;
+        this.lrc=[];
+        this.currentLrc='';
         this.loaded = false;
-        document.getElementById('fileSelector').value='';
+        document.getElementById('fileSelector').value = '';
       },
       switchPlay() {
-        if(this.playing) {
-          this.volumeRemember=this.volume;
-          this.volume=0;
-          this.pauseTimer=setTimeout(()=>{
+        if (this.playing) {
+          this.volumeRemember = this.volume;
+          this.volume = 0;
+          this.pauseTimer = setTimeout(() => {
             this.player.pause();
-          },1200)
-        }else{
+          }, 1200)
+        } else {
           clearTimeout(this.pauseTimer);
-          this.volume=this.volumeRemember;
+          this.volume = this.volumeRemember;
           this.player.play();
         }
         this.playing = !this.playing;
+      },
+      parseLyric(text){
+        let lyric = text.split('\n'); //先按行分割
+        let _l = lyric.length; //获取歌词行数
+        let lrc = [];//新建一个数组存放最后结果
+        for(let i=0;i<_l;i++) {
+          let d = lyric[i].match(/\[\d{2}:\d{2}((\.|\:)\d{2})\]/g);  //正则匹配播放时间
+          let t = lyric[i].split(d); //以时间为分割点分割每行歌词，数组最后一个为歌词正文
+          if (d != null) { //过滤掉空行等非歌词正文部分
+            //换算时间，保留两位小数
+            const dt = String(d).split(':');
+            const _t = Math.round(parseInt(dt[0].split('[')[1]) * 6000 + parseFloat(dt[1].split(']')[0]) * 100) / 100;
+            // console.log(dt,,_t);
+            lrc.push([_t, t[1]]);
+          }
+        }
+        return lrc;
       },
       entered() {
         clearTimeout(this.volumeTimer);
@@ -186,53 +278,107 @@
           this.menuVisible_0 = true;
       },
       leaved(e) {
-        if(this.volumeChange){
+        if (this.volumeChange) {
           this.changeVolume(e.y);
         }
         if (this.menuVisible_0)
-          this.volumeTimer=setTimeout(
-            ()=>{
+          this.volumeTimer = setTimeout(
+            () => {
               this.menuVisible_0 = false;
-              this.volumeChange=false;
-            },1000
+              this.volumeChange = false;
+            }, 1000
           );
+      },
+      menuIn() {
+        if (!this.menuTimer) {
+          if(this.menuTimer2) {
+            this.menuTimer2 = clearTimeout(this.menuTimer2);
+          }
+          this.menuTimer = setTimeout(() => {
+            this.menuVisible_1 = true;
+          }, 800)
+
+        }
+      },
+      letMenuOut(e){
+        if(!this.menuTimer2&&!this.volumeChange){
+          if(e.x>this.mainMenu.right||e.x<this.mainMenu.left||e.y<this.mainMenu.top||e.y>this.mainMenu.bottom){
+            this.menuOut();
+          }
+        }
+      },
+      menuOut() {
+
+        this.menuTimer = clearTimeout(this.menuTimer);
+        this.menuTimer2 = setTimeout(() => {
+          this.menuVisible_1 = false;
+        }, 500);
       },
       mute() {
         this.muted = !this.muted;
-        this.player.muted=this.muted;
+        this.player.muted = this.muted;
       },
-      volumeDown(e){
-        this.volumeChange=true;
-        const menuRect=document.getElementById('voice-menu').getBoundingClientRect();
-        this.voiceMenu={
-          top:menuRect.top,
-          height:menuRect.height,
-          bottom:menuRect.bottom
+      volumeDown(e) {
+        this.volumeChange = true;
+        this.menuTimer2=clearTimeout(this.menuTimer2);
+        const menuRect = document.getElementById('voice-menu').getBoundingClientRect();
+        this.voiceMenu = {
+          top: menuRect.top,
+          height: menuRect.height,
+          bottom: menuRect.bottom
         };
-        // console.log(this.voiceMenu);
         this.changeVolume(e.y);
       },
-      volumeMove(e){
-        if(this.volumeChange){
+      volumeMove(e) {
+        if (this.volumeChange) {
           this.changeVolume(e.y);
         }
 
       },
-      volumeUp(e){
-        this.volumeChange=false;
-        if(this.volumeChange){
+      volumeUp(e) {
+        if (this.volumeChange) {
           this.changeVolume(e.y);
         }
+        this.volumeChange = false;
       },
-      changeVolume(y){
-        if(y>=this.voiceMenu.top&&y<=this.voiceMenu.bottom){
-          this.volume=(this.voiceMenu.bottom-y)/this.voiceMenu.height;
-        }else if(y>this.voiceMenu.bottom){
-          this.volume=0
-        }else {
-          this.volume=1
+      changeVolume(y) {
+        this.muted = false;
+        this.player.muted = this.muted;
+        if (y >= this.voiceMenu.top && y <= this.voiceMenu.bottom) {
+          this.volume = (this.voiceMenu.bottom - y) / this.voiceMenu.height;
+        } else if (y > this.voiceMenu.bottom) {
+          this.volume = 0
+        } else {
+          this.volume = 1
         }
 
+      },
+      startDrag(e){
+        this.dragging=true;
+        clearTimeout(this.menuTimer);
+        clearTimeout(this.menuTimer2);
+        this.menuVisible_1=false;
+        this.menuTimer=true;
+        this.changeProgress(e.x);
+      },
+      doDrag(e){
+        if(this.dragging){
+          this.changeProgress(e.x);
+        }
+      },
+      endDrag(e){
+        if(this.dragging){
+          this.changeProgress(e.x);
+        }
+        this.dragging=false;
+        this.menuTimer=null;
+        if(e.x<=this.mainMenu.right&&e.x>=this.mainMenu.left&&e.y>=this.mainMenu.top&&e.y<=this.mainMenu.bottom){
+          this.menuIn();
+        }
+      },
+      changeProgress(x){
+        this.playTime=(x-this.mainMenu.left)/this.mainMenu.width*this.totalTime;
+        this.player.currentTime=this.playTime;
       }
     },
     computed: {
@@ -245,19 +391,24 @@
       mutedOp() {
         return (this.muted ? 'muted' : '');
       },
-      progress(){
-        return this.playTime/(this.totalTime+0.001);
+      progress() {
+        return this.playTime / (this.totalTime + 0.001);
       }
     },
-    mounted(){
-      this.player=document.getElementById('player');
-      this.player.volume=0.1;
-      window.addEventListener('mouseup',(e)=>{
-        if(this.volumeChange){
-          this.volumeChange=false;
+    mounted() {
+      this.player = document.getElementById('player');
+      this.player.volume = 0.1;
+      window.addEventListener('mouseup', e => {
+        if (this.volumeChange) {
+          this.volumeChange = false;
           this.changeVolume(e.y);
+          this.letMenuOut(e);
         }
-      })
+        if (this.dragging) {
+          this.dragging=false;
+          this.changeProgress(e.y);
+        }
+      });
     }
   }
 </script>
@@ -283,14 +434,22 @@
     overflow: hidden;
   }
 
-  .progress{
+  .progress {
     position: absolute;
-    left:0;
-    height:40px;
+    left: 0;
+    height: 40px;
     background: #85ea47;
     transition: all 0.5s;
   }
 
+  .lrc{
+    position: absolute;
+    left:50%;
+    top:50%;
+    font-weight: 800;
+    color:#666;
+    transform: translate(-50%,-50%);
+  }
   .button {
     width: 38px;
     height: 38px;
@@ -458,12 +617,14 @@
     right: 1px;
     top: 1px;
   }
-  .volume{
+
+  .volume {
     position: absolute;
-    bottom:0;
-    width:50px;
+    bottom: 0;
+    width: 50px;
     overflow: hidden;
   }
+
   .voice-menu {
     position: absolute;
     right: -25px;
@@ -471,7 +632,7 @@
     /*background: #000;*/
     overflow: hidden;
     width: 50px;
-    height:90px;
+    height: 90px;
   }
 
   .voice-menu .menu {
@@ -485,11 +646,12 @@
     border-left-color: transparent;
   }
 
-  .voice-menu .active{
-    bottom:0;
+  .voice-menu .active {
+    bottom: 0;
     border-color: #a5cdff;
     border-left-color: transparent;
   }
+
   .fade-leave-active {
     transition: none;
   }
