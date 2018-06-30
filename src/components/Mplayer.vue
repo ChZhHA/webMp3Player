@@ -17,7 +17,7 @@
            @mouseup="endDrag"
            :style="`height:${heightOp}px;width:${widthOp}px`">
         <div class="progress" :style="'width:'+progress*widthOp+'px;'"></div>
-        <div class="lrc">{{currentLrc}}</div>
+        <div class="lrc" v-show="loaded">{{currentLrc}}</div>
       </div>
       <div class="button round button-1" @click="selFile" v-if="!loaded">
         <div class="button-file"></div>
@@ -177,6 +177,8 @@
                       break;
                     }
                   }
+                }else{
+                  this.currentLrc='暂无歌词';
                 }
                 if (!this.muted) this.player.volume = this.volumeTemp;
                 if (this.volumeTemp !== this.volume) {
