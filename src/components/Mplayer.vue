@@ -64,10 +64,13 @@
 
           <!--切换播放模式按钮-->
           <transition name="fade">
-            <div class="button round button-4" @click="changeMode" v-show="functionVisible_4">
+            <div class="button no-border button-4" @click="changeMode" v-show="functionVisible_4">
               <div v-show="playMode===0" class="mode-0"></div>
-              <div v-show="playMode===1" class="mode-1"></div>
-              <div v-show="playMode===2" class="mode-2"></div>
+              <div v-show="playMode===1" class="mode-1">
+                <div></div>
+                <div></div>
+              </div>
+              <div v-show="playMode===2" class="mode-0">&nbsp;1</div>
             </div>
           </transition>
 
@@ -781,12 +784,59 @@
   }
 
   .button-4 .mode-0{
-    margin-top:10px;
+    margin-top:11px;
     margin-left:11px;
-    height:15px;
-    width:15px;
+    height:12px;
+    width:12px;
     border-radius: 50% 50% 50% 0;
-    border:1px solid #bbb;
+    border:2px solid #bbb;
+    color:#bbb;
+    font-weight: 800;
+    font-size:10px;
+    line-height:0px;
+  }
+  .button-4 .mode-0:before{
+    content: '';
+    display:block;
+    width: 0;
+    height: 0;
+    border:5px solid transparent;
+    border-right-color:#bbb;
+    position:relative;
+    left:-6px;
+    top:8px;
+
+  }
+
+  .button-4 .mode-1 div{
+    position:absolute;
+    top:9px;
+    left:10px;
+    width: 12px;
+    height: 8px;
+    border:2px solid #bbb;
+    border-radius: 0 0 0 100%;
+    border-top:none;
+    border-right:none;
+    transform: rotate(-25deg);
+  }
+  .button-4 .mode-1 div:before{
+    content: '';
+    display: block;
+    position: relative;
+    width: 0;
+    height: 0;
+    border:4px solid transparent;
+    border-left-color:#bbb;
+    left:12px;
+    top:5px;
+  }
+  .button-4 .mode-1 div:nth-child(1){
+    transform: scaleY(-1) translateY(-12px) rotate(-25deg);
+  }
+
+  .button-5 {
+
   }
   .button-1 {
     position: absolute;
