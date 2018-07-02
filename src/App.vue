@@ -21,8 +21,8 @@ export default {
 }
   .player{
     position:absolute;
-    left:0;
+    left:50%;
     top: 50%;
-    transform:translate(0,-50%);
+    transform:translate(-50%,-50%);
   }
 </style>

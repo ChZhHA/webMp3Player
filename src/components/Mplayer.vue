@@ -9,6 +9,7 @@
     <audio :src="fileURI" id='player' loop></audio>
     <!--先制作小型播放器-->
     <div class="mini-container">
+      <!--背景框-->
       <div class="mini-cover"
            id="mini-cover"
            @mouseover="menuIn"
@@ -16,14 +17,23 @@
            @mousedown="startDrag"
            @mouseup="endDrag"
            :style="`height:${heightOp}px;width:${widthOp}px`">
+        <!--播放进度条-->
         <div class="progress" :style="'width:'+progress*widthOp+'px;'"></div>
-        <div class="lrc" v-show="loaded">{{currentLrc}}</div>
+        <!--歌词-->
+        <transition name="fade">
+          <div class="lrc" v-show="loaded&&!menuVisible_1">{{currentLrc}}</div>
+        </transition>
       </div>
+
+      <!--开始图标-->
       <div class="button round button-1" @click="selFile" v-if="!loaded">
         <div class="button-file"></div>
       </div>
+
+      <!--播放菜单-->
       <transition name="normalfade">
         <div v-show="menuVisible_1">
+          <!--不可用的前后按钮-->
           <transition name="fade">
             <div class="button-mini round disabled back" v-show="functionVisible_0">
               <div></div>
@@ -34,6 +44,7 @@
               <div></div>
             </div>
           </transition>
+          <!--播放/暂停按钮-->
           <div class="button round button-1" @click="switchPlay" v-if="loaded">
             <transition name="fade">
               <div class="button-play" v-show="!playing"></div>
@@ -42,11 +53,15 @@
               <div class="button-pause" v-show="playing"></div>
             </transition>
           </div>
+
+          <!--关闭文件按钮-->
           <transition name="fade">
             <div class="button no-border button-2" @click="unloadFile" v-show="functionVisible_2">
               <div class="button-unload"></div>
             </div>
           </transition>
+
+          <!--音量按钮/菜单-->
           <transition name="normalfade">
             <div class="voice-menu"
                  v-show="menuVisible_0"
@@ -132,25 +147,30 @@
       }
     },
     methods: {
+      //模拟点击文件选择按钮
       selFile() {
         const item = document.getElementById('fileSelector');
         item.click();
       },
+      //读取本地文件
       loadFile() {
         const file = document.getElementById('fileSelector');
-        const url = file.files[0];
+        const url = file.files[0]; //从input标签拿到file对应blob对象
+        //过滤mp3后缀
         if (url.name.split('.').pop() !== 'mp3') {
           alert('请选择正确MP3格式文件');
         } else {
           const urn = file.urn || file.name;
+          //使用id3-reader插件拿到mp3对应
           ID3.loadTags(urn, ()=> {
             this.playInfo=ID3.getAllTags(urn);
-            // console.log(this.playInfo);
+            //调用baidu音乐API得到音乐id，再查找对应lrc
             searchMusic(this.playInfo.title).then(res=>{
               if(res.data){
                 if(res.data.song){
                   getLRC(res.data.song[0].songid).then(res=>{
                     if(res.data.lrcContent){
+                      //过滤json中的lrc字符串
                       this.lrc=this.parseLyric(res.data.lrcContent);
                     }
                   })
@@ -161,64 +181,78 @@
             tags: ["title","artist","album","picture"],
             dataReader: ID3.FileAPIReader(url)
           });
+          //读取mp3文件
           const reader = new FileReader();
-          reader.onload = () => {
-            this.fileURI = reader.result;
-            this.player.oncanplay = () => {
-              this.player.play();
-              this.totalTime = this.player.duration;
-              this.playing = true;
-              this.player.ontimeupdate = () => {
-                this.playTime = this.player.currentTime;
-                if(this.lrc.length>0){
-                  for (let i = 0; i < this.lrc.length; i++) {
-                    if(this.lrc[i][0]>this.playTime){
-                      this.currentLrc=this.lrc[i][1];
-                      break;
-                    }
-                  }
-                }else{
-                  this.currentLrc='暂无歌词';
-                }
-                if (!this.muted) this.player.volume = this.volumeTemp;
-                if (this.volumeTemp !== this.volume) {
-                  this.volumeTemp += (this.volume - this.volumeTemp) / 3;
-                }
-              }
-            };
-            this.loaded = true;
-            setTimeout(() => {
-              this.functionVisible_0 = true;
-            }, 300);
-            setTimeout(() => {
-              this.functionVisible_1 = true;
-              const menuRect=document.getElementById('mini-cover').getBoundingClientRect();
-              this.mainMenu={
-                left:menuRect.left,
-                width:menuRect.width,
-                right:menuRect.right,
-                top:menuRect.top,
-                height:menuRect.height,
-                bottom:menuRect.bottom,
-              };
-              window.addEventListener('mousemove',e=>{
-                this.letMenuOut(e);
-              })
-            }, 500);
-            setTimeout(() => {
-              this.functionVisible_2 = true;
-            }, 700);
-            setTimeout(() => {
-              this.functionVisible_3 = true;
-            }, 900);
-            clearTimeout(this.menuTimer2);
-            this.menuTimer2 = setTimeout(() => {
-              this.menuVisible_1 = false;
-            }, 3000)
-          };
+          reader.onload = () => {this.readerLoaded(reader.result)};
           reader.readAsDataURL(url);
         }
       },
+      readerLoaded(res){
+
+          // this.fileURI = url;
+          this.fileURI = res;
+          //播放文件加载完毕自动播放+注册侦听
+          this.player.oncanplay = () => {
+            this.player.play();
+            this.totalTime = this.player.duration;
+            this.playing = true;
+            this.player.ontimeupdate = () => {
+              this.playTime = this.player.currentTime; //获得当前播放时间
+              //如果歌词存在，找到时间点对应歌词
+              if(this.lrc.length>0){
+                for (let i = 0; i < this.lrc.length; i++) {
+                  if(this.lrc[i][0]>this.playTime){
+                    this.currentLrc=this.lrc[i][1]; //更新数据
+                    break;
+                  }
+                }
+              }else{
+                this.currentLrc='暂无歌词';
+              }
+              //设置渐进音量
+              if (!this.muted) this.player.volume = this.volumeTemp;
+              if (this.volumeTemp !== this.volume) {
+                this.volumeTemp += (this.volume - this.volumeTemp) / 3;
+              }
+            }
+          };
+          this.loaded = true;
+          //菜单依次显示
+          setTimeout(() => {
+            this.functionVisible_0 = true;
+          }, 300);
+          setTimeout(() => {
+            this.functionVisible_1 = true;
+            //保存播放器属性
+            const menuRect=document.getElementById('mini-cover').getBoundingClientRect();
+            this.mainMenu={
+              left:menuRect.left,
+              width:menuRect.width,
+              right:menuRect.right,
+              top:menuRect.top,
+              height:menuRect.height,
+              bottom:menuRect.bottom,
+            };
+            //侦听鼠标移出播放器，将菜单隐藏
+            window.addEventListener('mousemove',e=>{
+              this.letMenuOut(e);
+            })
+          }, 500);
+          setTimeout(() => {
+            this.functionVisible_2 = true;
+          }, 700);
+          setTimeout(() => {
+            this.functionVisible_3 = true;
+          }, 900);
+          clearTimeout(this.menuTimer2);
+          this.menuTimer2 = setTimeout(() => {
+            this.menuVisible_1 = false;
+            this.menuTimer2=null;
+          }, 3000)
+
+
+      },
+      //卸载音乐文件 还原临时数据
       unloadFile() {
         clearTimeout(this.pauseTimer);
         clearTimeout(this.volumeTimer);
@@ -241,8 +275,10 @@
         this.lrc=[];
         this.currentLrc='';
         this.loaded = false;
+        //重制输入框状态
         document.getElementById('fileSelector').value = '';
       },
+      //播放/暂停切换
       switchPlay() {
         if (this.playing) {
           this.volumeRemember = this.volume;
@@ -274,15 +310,18 @@
         }
         return lrc;
       },
+      //鼠标移入音量按钮
       entered() {
         clearTimeout(this.volumeTimer);
         if (!this.menuVisible_0)
           this.menuVisible_0 = true;
       },
+      //鼠标离开音量按钮
       leaved(e) {
         if (this.volumeChange) {
           this.changeVolume(e.y);
         }
+        //渐隐音量菜单
         if (this.menuVisible_0)
           this.volumeTimer = setTimeout(
             () => {
@@ -291,7 +330,9 @@
             }, 1000
           );
       },
+      //鼠标移进播放器，开始计时
       menuIn() {
+        // console.log(this.menuTimer);
         if (!this.menuTimer) {
           if(this.menuTimer2) {
             this.menuTimer2 = clearTimeout(this.menuTimer2);
@@ -301,7 +342,9 @@
           }, 800)
 
         }
+        // console.log(this.menuTimer);
       },
+      //判断菜单是否需要隐藏
       letMenuOut(e){
         if(!this.menuTimer2&&!this.volumeChange){
           if(e.x>this.mainMenu.right||e.x<this.mainMenu.left||e.y<this.mainMenu.top||e.y>this.mainMenu.bottom){
@@ -309,17 +352,19 @@
           }
         }
       },
+      //鼠标移出播放器
       menuOut() {
-
         this.menuTimer = clearTimeout(this.menuTimer);
         this.menuTimer2 = setTimeout(() => {
           this.menuVisible_1 = false;
-        }, 500);
+        }, 1000);
       },
+      //切换静音
       mute() {
         this.muted = !this.muted;
         this.player.muted = this.muted;
       },
+      //在音量菜单上按下鼠标
       volumeDown(e) {
         this.volumeChange = true;
         this.menuTimer2=clearTimeout(this.menuTimer2);
@@ -331,18 +376,21 @@
         };
         this.changeVolume(e.y);
       },
+      //判断音量拖动
       volumeMove(e) {
         if (this.volumeChange) {
           this.changeVolume(e.y);
         }
 
       },
+      //拖动弹起
       volumeUp(e) {
         if (this.volumeChange) {
           this.changeVolume(e.y);
         }
         this.volumeChange = false;
       },
+      //改变音量大小
       changeVolume(y) {
         this.muted = false;
         this.player.muted = this.muted;
@@ -355,6 +403,7 @@
         }
 
       },
+      //拖动播放进度
       startDrag(e){
         this.dragging=true;
         clearTimeout(this.menuTimer);
@@ -378,6 +427,7 @@
           this.menuIn();
         }
       },
+      //改变当前播放时间
       changeProgress(x){
         this.playTime=(x-this.mainMenu.left)/this.mainMenu.width*this.totalTime;
         this.player.currentTime=this.playTime;
@@ -400,6 +450,7 @@
     mounted() {
       this.player = document.getElementById('player');
       this.player.volume = 0.1;
+      //判断鼠标在各拖动条外的鼠标释放
       window.addEventListener('mouseup', e => {
         if (this.volumeChange) {
           this.volumeChange = false;
