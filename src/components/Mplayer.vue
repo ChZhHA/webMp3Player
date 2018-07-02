@@ -580,9 +580,11 @@
           this.changeProgress(e.y);
         }
       });
-      for (let i = 0; i < 40; i++) {
-        clearInterval(i);
-      }
+
+      //需要热更新时加注释
+      // for (let i = 0; i < 40; i++) {
+      //   clearInterval(i);
+      // }
 
       this.setBreath();
 
