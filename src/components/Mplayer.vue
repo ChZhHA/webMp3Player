@@ -4,19 +4,20 @@
 <template>
   <div>
     <!--用于选择文件-->
-    <input type="file" id="fileSelector" style="display:none" @change="loadFile">
+    <input type="file" id="fileSelector" style="display:none" multiple @change="loadFile">
     <!--用于播放音频-->
-    <audio :src="fileURI" id='player' loop></audio>
+    <audio :src="fileURI" id='player'></audio>
     <!--先制作小型播放器-->
     <div class="mini-container">
       <!--背景框-->
       <div class="mini-cover"
+           :style="`box-shadow:0 0 ${shadowOp}px #bbb;height:${heightOp}px;width:${widthOp}px`"
            id="mini-cover"
            @mouseover="menuIn"
            @mousemove="doDrag"
            @mousedown="startDrag"
            @mouseup="endDrag"
-           :style="`height:${heightOp}px;width:${widthOp}px`">
+      >
         <!--播放进度条-->
         <div class="progress" :style="'width:'+progress*widthOp+'px;'"></div>
         <!--歌词-->
@@ -33,14 +34,14 @@
       <!--播放菜单-->
       <transition name="normalfade">
         <div v-show="menuVisible_1">
-          <!--不可用的前后按钮-->
+          <!--可用的前后按钮-->
           <transition name="fade">
-            <div class="button-mini round disabled back" v-show="functionVisible_0">
+            <div class="button-mini round back" v-show="functionVisible_0" @click="goBack">
               <div></div>
             </div>
           </transition>
           <transition name="fade">
-            <div class="button-mini round disabled front" v-show="functionVisible_1">
+            <div class="button-mini round front" v-show="functionVisible_1" @click="goFront">
               <div></div>
             </div>
           </transition>
@@ -61,6 +62,21 @@
             </div>
           </transition>
 
+          <!--切换播放模式按钮-->
+          <transition name="fade">
+            <div class="button round button-4" @click="changeMode" v-show="functionVisible_4">
+              <div v-show="playMode===0" class="mode-0"></div>
+              <div v-show="playMode===1" class="mode-1"></div>
+              <div v-show="playMode===2" class="mode-2"></div>
+            </div>
+          </transition>
+
+          <!--打开播放列表按钮-->
+          <transition name="fade">
+            <div class="button round button-5" @click="openList" v-show="functionVisible_5">
+              <div></div>
+            </div>
+          </transition>
           <!--音量按钮/菜单-->
           <transition name="normalfade">
             <div class="voice-menu"
@@ -96,7 +112,8 @@
 </template>
 
 <script>
-  import {searchMusic,getLRC} from '../api'
+  import {searchMusic, getLRC} from '../api'
+
   export default {
     name: "player",
     data() {
@@ -112,9 +129,12 @@
           }
         },
         fileURI: '',
-        lrc:[],
+        lrc: [],
+        playList:[],
+        playIndex:0,
+        totalList:[],
         playing: false,
-        loaded: false,
+        loaded: !false,
         muted: false,
 
         volume: 0.8,
@@ -122,28 +142,37 @@
         volumeRemember: 0.8,
         volumeChange: false,
 
-        dragging:false,
+        dragging: false,
 
-        functionVisible_0: false,
-        functionVisible_1: false,
-        functionVisible_2: false,
-        functionVisible_3: false,
-        menuVisible_0: false,
+        functionVisible_0: !false,
+        functionVisible_1: !false,
+        functionVisible_2: !false,
+        functionVisible_3: !false,
+        functionVisible_4: !false,
+        functionVisible_5: !false,
+
+
+        menuVisible_0: !false,
         menuVisible_1: true,
 
         voiceMenu: null,
-        mainMenu:null,
+        mainMenu: null,
 
-        currentLrc:'',
+        currentPlay:{url:'',urn:''},
+        currentLrc: '',
         playTime: 0,
         totalTime: 0,
-        playInfo:null,
+        playInfo: null,
+        playMode:0,
 
-        pauseTimer: null,
-        volumeTimer: null,
-        menuTimer: null,
-        menuTimer2: null,
+        pauseTimer: false,
+        volumeTimer: false,
+        menuTimer: false,
+        menuTimer2: false,
+        breathTimer: false,
 
+        radio: 0,
+        shadowOp: 5,
       }
     },
     methods: {
@@ -155,102 +184,181 @@
       //读取本地文件
       loadFile() {
         const file = document.getElementById('fileSelector');
-        const url = file.files[0]; //从input标签拿到file对应blob对象
-        //过滤mp3后缀
-        if (url.name.split('.').pop() !== 'mp3') {
-          alert('请选择正确MP3格式文件');
-        } else {
-          const urn = file.urn || file.name;
-          //使用id3-reader插件拿到mp3对应
-          ID3.loadTags(urn, ()=> {
-            this.playInfo=ID3.getAllTags(urn);
-            //调用baidu音乐API得到音乐id，再查找对应lrc
-            searchMusic(this.playInfo.title).then(res=>{
-              if(res.data){
-                if(res.data.song){
-                  getLRC(res.data.song[0].songid).then(res=>{
-                    if(res.data.lrcContent){
-                      //过滤json中的lrc字符串
-                      this.lrc=this.parseLyric(res.data.lrcContent);
-                    }
-                  })
-                }
-              }
+        let failed=[];
+        for (const item of file.files) {
+          if(item.name.split('.').pop()!=='mp3'){
+            failed.push(
+              item.name
+            )
+          }else{
+            const urn=item.urn || item.name;
+            this.playList.push({
+              url:item,
+              urn:urn,
+            });
+            this.totalList.push({
+              url:item,
+              urn:urn,
             })
-          }, {
-            tags: ["title","artist","album","picture"],
-            dataReader: ID3.FileAPIReader(url)
-          });
-          //读取mp3文件
-          const reader = new FileReader();
-          reader.onload = () => {this.readerLoaded(reader.result)};
-          reader.readAsDataURL(url);
+          }
+        }
+        if(failed.length>0) alert(`读取${failed.length}个文件失败：不是mp3格式`);
+        if(!this.loaded){
+          //如果是首次加载
+          this.play(true);
+        }else{
+          //如果已在播放
+          //貌似什么都不用管
         }
       },
-      readerLoaded(res){
-
-          // this.fileURI = url;
-          this.fileURI = res;
-          //播放文件加载完毕自动播放+注册侦听
-          this.player.oncanplay = () => {
-            this.player.play();
-            this.totalTime = this.player.duration;
-            this.playing = true;
-            this.player.ontimeupdate = () => {
-              this.playTime = this.player.currentTime; //获得当前播放时间
-              //如果歌词存在，找到时间点对应歌词
-              if(this.lrc.length>0){
-                for (let i = 0; i < this.lrc.length; i++) {
-                  if(this.lrc[i][0]>this.playTime){
-                    this.currentLrc=this.lrc[i][1]; //更新数据
-                    break;
-                  }
-                }
-              }else{
-                this.currentLrc='暂无歌词';
+      play(isFirst=false){
+        if(isFirst){
+          this.currentPlay=this.totalList[0];
+        }else{
+          switch (this.playMode){
+            case 0: //顺序模式
+              // if(this.playList.length>0){
+              // }else{
+              //   this.playList=[...this.totalList];
+              // }
+              // this.currentPlay=this.playList.shift();
+              if(this.playIndex<0) {
+                this.playIndex=this.totalList.length+this.playIndex;
               }
-              //设置渐进音量
-              if (!this.muted) this.player.volume = this.volumeTemp;
-              if (this.volumeTemp !== this.volume) {
-                this.volumeTemp += (this.volume - this.volumeTemp) / 3;
+              this.playIndex++;
+              if(this.playIndex>=this.totalList.length){
+                this.playIndex=this.playIndex-this.totalList.length;
+              }
+              this.currentPlay=this.totalList[this.playIndex];
+              // console.log(this.currentPlay,this.playIndex);
+              break;
+            case 1: //随机模式
+              const ram=Math.floor(Math.random()*this.totalList.length);
+              this.currentPlay=this.totalList[ram];
+              break;
+            case 2: //单曲循环
+              break;
+          }
+        }
+        if(this.playMode!==2){
+          const OURL = URL.createObjectURL(this.currentPlay.url);
+          this.getRemoteLRC(this.currentPlay.url,this.currentPlay.urn);
+          this.readerLoaded(OURL);
+        }
+        this.player.currentTime=0;
+      },
+      goFront(){
+        this.play();
+      },
+      goBack(){
+        this.playIndex-=2;
+        this.play();
+      },
+      changeMode(){
+        this.playMode++;
+        if(this.playMode>2)
+          this.playMode=0;
+      },
+      openList(){
+
+      },
+      readerLoaded(res) {
+        // this.fileURI = url;
+        this.fileURI = res;
+        //播放文件加载完毕自动播放+注册侦听
+        this.player.oncanplay = () => {
+          this.player.play();
+          this.totalTime = this.player.duration;
+          this.playing = true;
+          this.player.ontimeupdate = () => {
+            this.playTime = this.player.currentTime; //获得当前播放时间
+            if(this.playTime === this.totalTime){
+              this.play();
+            }
+            //如果歌词存在，找到时间点对应歌词
+            if (this.lrc.length > 0) {
+              for (let i = 0; i < this.lrc.length; i++) {
+                if (this.lrc[i][0] > this.playTime) {
+                  this.currentLrc = this.lrc[i][1]; //更新数据
+                  break;
+                }
+              }
+            } else {
+              this.currentLrc = '暂无歌词';
+            }
+            //设置渐进音量
+            if (!this.muted) this.player.volume = this.volumeTemp;
+            if (this.volumeTemp !== this.volume) {
+              this.volumeTemp += (this.volume - this.volumeTemp) / 3;
+            }
+          }
+        };
+        clearInterval(this.breathTimer);
+        this.shadowOp = 5;
+        this.loaded = true;
+        //菜单依次显示
+        setTimeout(() => {
+          this.functionVisible_0 = true;
+        }, 300);
+        setTimeout(() => {
+          this.functionVisible_1 = true;
+          //保存播放器属性
+          const menuRect = document.getElementById('mini-cover').getBoundingClientRect();
+          this.mainMenu = {
+            left: menuRect.left,
+            width: menuRect.width,
+            right: menuRect.right,
+            top: menuRect.top,
+            height: menuRect.height,
+            bottom: menuRect.bottom,
+          };
+          //侦听鼠标移出播放器，将菜单隐藏
+          window.addEventListener('mousemove', e => {
+            this.letMenuOut(e);
+          })
+        }, 500);
+        setTimeout(() => {
+          this.functionVisible_2 = true;
+        }, 700);
+        setTimeout(() => {
+          this.functionVisible_3 = true;
+        }, 900);
+        setTimeout(()=>{
+          this.functionVisible_5=true;
+        }, 1100);
+        setTimeout(()=>{
+          this.functionVisible_4=true;
+        },1300);
+        clearTimeout(this.menuTimer2);
+        this.menuTimer2 = setTimeout(() => {
+          this.menuVisible_1 = false;
+          this.menuTimer2 = false;
+        }, 3000)
+
+
+      },
+      //
+      getRemoteLRC(url=this.currentPlay.url,urn=this.currentPlay.urn){
+        this.lrc=[];
+        ID3.loadTags(urn, () => {
+          this.playInfo = ID3.getAllTags(urn);
+          //调用baidu音乐API得到音乐id，再查找对应lrc
+          searchMusic(this.playInfo.title).then(res => {
+            if (res.data) {
+              if (res.data.song) {
+                getLRC(res.data.song[0].songid).then(res => {
+                  if (res.data.lrcContent) {
+                    //过滤json中的lrc字符串
+                    this.lrc = this.parseLyric(res.data.lrcContent);
+                  }
+                })
               }
             }
-          };
-          this.loaded = true;
-          //菜单依次显示
-          setTimeout(() => {
-            this.functionVisible_0 = true;
-          }, 300);
-          setTimeout(() => {
-            this.functionVisible_1 = true;
-            //保存播放器属性
-            const menuRect=document.getElementById('mini-cover').getBoundingClientRect();
-            this.mainMenu={
-              left:menuRect.left,
-              width:menuRect.width,
-              right:menuRect.right,
-              top:menuRect.top,
-              height:menuRect.height,
-              bottom:menuRect.bottom,
-            };
-            //侦听鼠标移出播放器，将菜单隐藏
-            window.addEventListener('mousemove',e=>{
-              this.letMenuOut(e);
-            })
-          }, 500);
-          setTimeout(() => {
-            this.functionVisible_2 = true;
-          }, 700);
-          setTimeout(() => {
-            this.functionVisible_3 = true;
-          }, 900);
-          clearTimeout(this.menuTimer2);
-          this.menuTimer2 = setTimeout(() => {
-            this.menuVisible_1 = false;
-            this.menuTimer2=null;
-          }, 3000)
-
-
+          })
+        }, {
+          tags: ["title", "artist", "album", "picture"],
+          dataReader: ID3.FileAPIReader(url)
+        });
       },
       //卸载音乐文件 还原临时数据
       unloadFile() {
@@ -267,14 +375,17 @@
         this.volume = 0.8;
         this.volumeTemp = 0.0;
         this.volumeRemember = 0.8;
-        this.volumeChange=false;
-        this.dragging=false;
-        this.muted=false;
-        this.player.muted=false;
-        this.playInfo=null;
-        this.lrc=[];
-        this.currentLrc='';
+        this.volumeChange = false;
+        this.dragging = false;
+        this.muted = false;
+        this.player.muted = false;
+        this.playInfo = null;
+        this.lrc = [];
+        this.currentLrc = '';
         this.loaded = false;
+        this.radio = 0;
+        this.shadowOp = 5;
+        this.setBreath();
         //重制输入框状态
         document.getElementById('fileSelector').value = '';
       },
@@ -293,11 +404,11 @@
         }
         this.playing = !this.playing;
       },
-      parseLyric(text){
+      parseLyric(text) {
         let lyric = text.split('\n'); //先按行分割
         let _l = lyric.length; //获取歌词行数
         let lrc = [];//新建一个数组存放最后结果
-        for(let i=0;i<_l;i++) {
+        for (let i = 0; i < _l; i++) {
           let d = lyric[i].match(/\[\d{2}:\d{2}((\.|\:)\d{2})\]/g);  //正则匹配播放时间
           let t = lyric[i].split(d); //以时间为分割点分割每行歌词，数组最后一个为歌词正文
           if (d != null) { //过滤掉空行等非歌词正文部分
@@ -334,7 +445,7 @@
       menuIn() {
         // console.log(this.menuTimer);
         if (!this.menuTimer) {
-          if(this.menuTimer2) {
+          if (this.menuTimer2) {
             this.menuTimer2 = clearTimeout(this.menuTimer2);
           }
           this.menuTimer = setTimeout(() => {
@@ -345,9 +456,9 @@
         // console.log(this.menuTimer);
       },
       //判断菜单是否需要隐藏
-      letMenuOut(e){
-        if(!this.menuTimer2&&!this.volumeChange){
-          if(e.x>this.mainMenu.right||e.x<this.mainMenu.left||e.y<this.mainMenu.top||e.y>this.mainMenu.bottom){
+      letMenuOut(e) {
+        if (!this.menuTimer2 && !this.volumeChange) {
+          if (e.x > this.mainMenu.right || e.x < this.mainMenu.left || e.y < this.mainMenu.top || e.y > this.mainMenu.bottom) {
             this.menuOut();
           }
         }
@@ -367,7 +478,7 @@
       //在音量菜单上按下鼠标
       volumeDown(e) {
         this.volumeChange = true;
-        this.menuTimer2=clearTimeout(this.menuTimer2);
+        this.menuTimer2 = clearTimeout(this.menuTimer2);
         const menuRect = document.getElementById('voice-menu').getBoundingClientRect();
         this.voiceMenu = {
           top: menuRect.top,
@@ -404,33 +515,40 @@
 
       },
       //拖动播放进度
-      startDrag(e){
-        this.dragging=true;
+      startDrag(e) {
+        this.dragging = true;
         clearTimeout(this.menuTimer);
         clearTimeout(this.menuTimer2);
-        this.menuVisible_1=false;
-        this.menuTimer=true;
+        this.menuVisible_1 = false;
+        this.menuTimer = true;
         this.changeProgress(e.x);
       },
-      doDrag(e){
-        if(this.dragging){
+      doDrag(e) {
+        if (this.dragging) {
           this.changeProgress(e.x);
         }
       },
-      endDrag(e){
-        if(this.dragging){
+      endDrag(e) {
+        if (this.dragging) {
           this.changeProgress(e.x);
         }
-        this.dragging=false;
-        this.menuTimer=null;
-        if(e.x<=this.mainMenu.right&&e.x>=this.mainMenu.left&&e.y>=this.mainMenu.top&&e.y<=this.mainMenu.bottom){
+        this.dragging = false;
+        this.menuTimer = null;
+        if (e.x <= this.mainMenu.right && e.x >= this.mainMenu.left && e.y >= this.mainMenu.top && e.y <= this.mainMenu.bottom) {
           this.menuIn();
         }
       },
       //改变当前播放时间
-      changeProgress(x){
-        this.playTime=(x-this.mainMenu.left)/this.mainMenu.width*this.totalTime;
-        this.player.currentTime=this.playTime;
+      changeProgress(x) {
+        this.playTime = (x - this.mainMenu.left) / this.mainMenu.width * this.totalTime;
+        this.player.currentTime = this.playTime;
+      },
+      //设定开始按钮呼吸
+      setBreath() {
+        this.breathTimer = setInterval(() => {
+          this.radio += 0.2;
+          this.shadowOp = (Math.sin(this.radio) + 0.5) * 6;
+        }, 100);
       }
     },
     computed: {
@@ -445,7 +563,7 @@
       },
       progress() {
         return this.playTime / (this.totalTime + 0.001);
-      }
+      },
     },
     mounted() {
       this.player = document.getElementById('player');
@@ -458,10 +576,16 @@
           this.letMenuOut(e);
         }
         if (this.dragging) {
-          this.dragging=false;
+          this.dragging = false;
           this.changeProgress(e.y);
         }
       });
+      for (let i = 0; i < 40; i++) {
+        clearInterval(i);
+      }
+
+      this.setBreath();
+
     }
   }
 </script>
@@ -495,14 +619,15 @@
     transition: all 0.5s;
   }
 
-  .lrc{
+  .lrc {
     position: absolute;
-    left:50%;
-    top:50%;
+    left: 50%;
+    top: 50%;
     font-weight: 800;
-    color:#666;
-    transform: translate(-50%,-50%);
+    color: #666;
+    transform: translate(-50%, -50%);
   }
+
   .button {
     width: 38px;
     height: 38px;
@@ -523,11 +648,12 @@
     height: 28px;
     box-shadow: inset 0 0 3px #ddd, 0 0 0 #eee;
     transition: all 0.3s;
+    cursor: pointer;
   }
 
   .button-mini:hover {
-    /*background: #263550;*/
-    /*box-shadow: inset 0 0 0 #ddd, 0 0 3px #eee;*/
+    background: #2f4061;
+    box-shadow: inset 0 0 0 #ddd, 0 0 3px #eee;
   }
 
   .round {
@@ -558,7 +684,7 @@
     width: 0;
     height: 0;
     border: 8px solid transparent;
-    border-right: 10px solid #eee;
+    border-right: 10px solid #bbb;
     margin-top: 6px;
   }
 
@@ -566,7 +692,7 @@
     width: 0;
     height: 0;
     border: 8px solid transparent;
-    border-left: 10px solid #eee;
+    border-left: 10px solid #bbb;
     margin-top: 6px;
     margin-left: 10px;
   }
@@ -652,6 +778,14 @@
     opacity: 0.2;
   }
 
+  .button-4 .mode-0{
+    margin-top:10px;
+    margin-left:11px;
+    height:15px;
+    width:15px;
+    border-radius: 50% 50% 50% 0;
+    border:1px solid #bbb;
+  }
   .button-1 {
     position: absolute;
     left: 50%;
@@ -670,7 +804,16 @@
     right: 1px;
     top: 1px;
   }
-
+  .button-4{
+    position: absolute;
+    left:50px;
+    top:1px;
+  }
+  .button-5{
+    position:absolute;
+    right:50px;
+    top:1px;
+  }
   .volume {
     position: absolute;
     bottom: 0;
