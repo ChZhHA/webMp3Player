@@ -76,7 +76,7 @@
 
           <!--打开播放列表按钮-->
           <transition name="fade">
-            <div class="button round button-5" @click="openList" v-show="functionVisible_5">
+            <div class="button no-border button-5" @click="openList" v-show="functionVisible_5">
               <div></div>
             </div>
           </transition>
@@ -108,7 +108,33 @@
           </transition>
         </div>
       </transition>
-
+      <transition name="normalfade">
+        <div v-if="menuVisible_2" class="menu-list">
+          <transition name="normalfade">
+            <div class="menu-list-pointer" v-show="menuVisible_1"></div>
+          </transition>
+          <div class="button-mini round mini-button-1" @click="selFile">
+            <div></div>
+          </div>
+          <div class="play-list-cover">
+            <div class="play-list">
+              <div class="item" v-for="(item,index) of playList"
+                   :id="index"
+                   @click="play(false,index)"
+                   :style="isActive(index)+'top:'+item.y+'px;'+isDrag(index)"
+                   @mousedown="listDragStart"
+              >
+                {{index+1}}&nbsp;&nbsp;{{item.title}}
+                <div class="button-mini round mini-button-2"
+                     @click="removeList(index)"
+                >
+                  <div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </transition>
 
     </div>
   </div>
@@ -131,13 +157,30 @@
             width: 400
           }
         },
+        player:null,
         fileURI: '',
         lrc: [],
-        playList:[],
-        playIndex:0,
-        totalList:[],
+        playList: [
+        //   {
+        //   index:0,
+        //   dis:true,
+        //   title:'0001',
+        //   y:5,
+        // },{
+        //   index:1,
+        //   dis:true,
+        //   title:'0002',
+        //   y:40,
+        // },{
+        //   index:2,
+        //   dis:true,
+        //   title:'0003',
+        //   y:80
+        // }
+        ],
+        playIndex: 0,
         playing: false,
-        loaded: !false,
+        loaded: false,
         muted: false,
 
         volume: 0.8,
@@ -147,32 +190,41 @@
 
         dragging: false,
 
-        functionVisible_0: !false,
-        functionVisible_1: !false,
-        functionVisible_2: !false,
-        functionVisible_3: !false,
-        functionVisible_4: !false,
-        functionVisible_5: !false,
+        functionVisible_0: false,
+        functionVisible_1: false,
+        functionVisible_2: false,
+        functionVisible_3: false,
+        functionVisible_4: false,
+        functionVisible_5: false,
 
 
-        menuVisible_0: !false,
+        menuVisible_0: false,
         menuVisible_1: true,
+        menuVisible_2: false,
 
         voiceMenu: null,
         mainMenu: null,
 
-        currentPlay:{url:'',urn:''},
+        currentPlay: {url: '', urn: ''},
         currentLrc: '',
         playTime: 0,
         totalTime: 0,
         playInfo: null,
-        playMode:0,
+        playMode: 0,
 
         pauseTimer: false,
         volumeTimer: false,
         menuTimer: false,
         menuTimer2: false,
+        menuTimer3: false,
         breathTimer: false,
+        // listDragTimer: false,
+
+        listDragStartY:false,
+        listDragTarget:false,
+        listDragDeltaY:false,
+
+        hasDrag:false,
 
         radio: 0,
         shadowOp: 5,
@@ -187,83 +239,133 @@
       //读取本地文件
       loadFile() {
         const file = document.getElementById('fileSelector');
-        let failed=[];
+        let failed = [];
         for (const item of file.files) {
-          if(item.name.split('.').pop()!=='mp3'){
+          if (item.name.split('.').pop() !== 'mp3') {
             failed.push(
               item.name
             )
-          }else{
-            const urn=item.urn || item.name;
+          } else {
+            const urn = item.urn || item.name;
             this.playList.push({
-              url:item,
-              urn:urn,
+              url: item,
+              urn: urn,
+              title: '',
+              index:this.playList.length,
+              dis:true,
+              y:0
             });
-            this.totalList.push({
-              url:item,
-              urn:urn,
-            })
+            this.setListY();
+            this.getTitle(item, urn, this.playList.length - 1);
           }
         }
-        if(failed.length>0) alert(`读取${failed.length}个文件失败：不是mp3格式`);
-        if(!this.loaded){
+        if (failed.length > 0) alert(`读取${failed.length}个文件失败：不是mp3格式`);
+        if (!this.loaded&&failed.length!==file.files.length) {
           //如果是首次加载
           this.play(true);
-        }else{
+        } else {
           //如果已在播放
           //貌似什么都不用管
         }
       },
-      play(isFirst=false){
-        if(isFirst){
-          this.currentPlay=this.totalList[0];
-        }else{
-          switch (this.playMode){
+      setListY(){
+        for (const item of this.playList) {
+          item.y=item.index*38+5;
+        }
+      },
+      isDrag(index){
+        if(index===parseInt(this.listDragTarget)){
+          return `transition:none;z-index:200;`
+        }
+      },
+      play(isFirst = false,index=null) {
+        let flag=false,flag2=false;
+        if(typeof index==="number"&&!this.hasDrag){
+          this.listDragStartY=false;
+          this.listDragTarget=false;
+          this.playIndex=index;
+          this.currentPlay=this.playList[index];
+          flag=true;
+        }else if (isFirst) {
+          this.currentPlay = this.playList[0];
+          flag=true;
+        }else if (this.loaded) {
+          if (this.playIndex < 0) {
+            this.playIndex = this.playList.length + this.playIndex;
+          }
+          switch (this.playMode) {
             case 0: //顺序模式
-              // if(this.playList.length>0){
-              // }else{
-              //   this.playList=[...this.totalList];
-              // }
-              // this.currentPlay=this.playList.shift();
-              if(this.playIndex<0) {
-                this.playIndex=this.totalList.length+this.playIndex;
-              }
               this.playIndex++;
-              if(this.playIndex>=this.totalList.length){
-                this.playIndex=this.playIndex-this.totalList.length;
-              }
-              this.currentPlay=this.totalList[this.playIndex];
-              // console.log(this.currentPlay,this.playIndex);
               break;
             case 1: //随机模式
-              const ram=Math.floor(Math.random()*this.totalList.length);
-              this.currentPlay=this.totalList[ram];
+              let ram = this.playIndex;
+              for (; ram === this.playIndex; ram = Math.floor(Math.random() * this.totalList.length))
+                ;
+              this.playIndex = ram;
               break;
             case 2: //单曲循环
               break;
           }
+          if (this.playIndex >= this.playList.length) {
+            this.playIndex = this.playIndex - this.playList.length;
+          }
+          if(this.currentPlay===this.playList[this.playIndex]) flag2=true;
+          this.currentPlay = this.playList[this.playIndex];
+          flag=true;
         }
-        if(this.playMode!==2){
-          const OURL = URL.createObjectURL(this.currentPlay.url);
-          this.getRemoteLRC(this.currentPlay.url,this.currentPlay.urn);
-          this.readerLoaded(OURL);
-        }
-        this.player.currentTime=0;
-      },
-      goFront(){
-        this.play();
-      },
-      goBack(){
-        this.playIndex-=2;
-        this.play();
-      },
-      changeMode(){
-        this.playMode++;
-        if(this.playMode>2)
-          this.playMode=0;
-      },
-      openList(){
+        if(flag2){
 
+          this.player.currentTime = 0;
+
+        }else if(flag){
+
+          const OURL = URL.createObjectURL(this.currentPlay.url);
+          this.getRemoteLRC(this.currentPlay.url, this.currentPlay.urn);
+          this.readerLoaded(OURL);
+          this.player.currentTime = 0;
+
+        }
+
+      },
+      goFront() {
+        if(this.playMode===2) this.playIndex++;
+        this.play();
+      },
+      goBack() {
+        if(this.playMode===2) this.playIndex--;
+        this.playIndex -= 2;
+        this.play();
+      },
+      changeMode() {
+        this.playMode++;
+        if (this.playMode > 2)
+          this.playMode = 0;
+      },
+      openList() {
+        this.menuVisible_2 = !this.menuVisible_2;
+      },
+      removeList(index) {
+        if (index === this.playIndex) {
+          if (this.playList.length === 1) {
+            this.unloadFile();
+          } else {
+            this.playList.splice(index, 1);
+            this.setListY();
+            this.playIndex -= 2;
+            this.play();
+          }
+        } else {
+          this.playList.splice(index, 1);
+          this.setListY();
+        }
+
+
+      },
+      listDragStart(e){
+        this.listDragTarget=e.target.id;
+        this.listDragDeltaY=e.target.offsetTop-e.y;
+        this.listDragStartY=e.y;
+        this.hasDrag=false;
       },
       readerLoaded(res) {
         // this.fileURI = url;
@@ -275,7 +377,7 @@
           this.playing = true;
           this.player.ontimeupdate = () => {
             this.playTime = this.player.currentTime; //获得当前播放时间
-            if(this.playTime === this.totalTime){
+            if (this.playTime === this.totalTime) {
               this.play();
             }
             //如果歌词存在，找到时间点对应歌词
@@ -318,6 +420,14 @@
           //侦听鼠标移出播放器，将菜单隐藏
           window.addEventListener('mousemove', e => {
             this.letMenuOut(e);
+            if(this.listDragTarget){
+              this.playList[this.listDragTarget].index=false;
+              this.setListY();
+              this.playList[this.listDragTarget].y=e.y + this.listDragDeltaY;
+              if(Math.abs(e.y-this.listDragStartY)>15){
+                this.hasDrag=true;
+              }
+            }
           })
         }, 500);
         setTimeout(() => {
@@ -326,12 +436,12 @@
         setTimeout(() => {
           this.functionVisible_3 = true;
         }, 900);
-        setTimeout(()=>{
-          this.functionVisible_5=true;
+        setTimeout(() => {
+          this.functionVisible_5 = true;
         }, 1100);
-        setTimeout(()=>{
-          this.functionVisible_4=true;
-        },1300);
+        setTimeout(() => {
+          this.functionVisible_4 = true;
+        }, 1300);
         clearTimeout(this.menuTimer2);
         this.menuTimer2 = setTimeout(() => {
           this.menuVisible_1 = false;
@@ -341,8 +451,8 @@
 
       },
       //
-      getRemoteLRC(url=this.currentPlay.url,urn=this.currentPlay.urn){
-        this.lrc=[];
+      getRemoteLRC(url = this.currentPlay.url, urn = this.currentPlay.urn) {
+        this.lrc = [];
         ID3.loadTags(urn, () => {
           this.playInfo = ID3.getAllTags(urn);
           //调用baidu音乐API得到音乐id，再查找对应lrc
@@ -363,31 +473,74 @@
           dataReader: ID3.FileAPIReader(url)
         });
       },
+      getTitle(url, urn, index) {
+        ID3.loadTags(urn, () => {
+          const playInfo = ID3.getAllTags(urn);
+          this.playList[index].title = playInfo.title;
+        }, {
+          tags: ["title", "artist", "album", "picture"],
+          dataReader: ID3.FileAPIReader(url)
+        });
+      },
       //卸载音乐文件 还原临时数据
       unloadFile() {
         clearTimeout(this.pauseTimer);
         clearTimeout(this.volumeTimer);
         clearTimeout(this.menuTimer);
         clearTimeout(this.menuTimer2);
-        this.playing = false;
+        clearTimeout(this.menuTimer3);
+        this.loaded = false;
+
         this.fileURI = '';
+        this.lrc = [];
+        this.playList = [];
+        this.playIndex = 0;
+        this.playing = false;
+
+        this.muted = false;
+        this.player.muted = false;
+
+        this.volume=0.8;
+        this.volumeTemp = 0.0;
+        this.volumeRemember=0.8;
+        this.volumeChange = false;
+
+        this.dragging = false;
+
         this.functionVisible_0 = false;
         this.functionVisible_1 = false;
         this.functionVisible_2 = false;
         this.functionVisible_3 = false;
-        this.volume = 0.8;
-        this.volumeTemp = 0.0;
-        this.volumeRemember = 0.8;
-        this.volumeChange = false;
-        this.dragging = false;
-        this.muted = false;
-        this.player.muted = false;
-        this.playInfo = null;
-        this.lrc = [];
+        this.functionVisible_4 = false;
+        this.functionVisible_5 = false;
+
+        this.menuVisible_0 = false;
+        this.menuVisible_1 = true;
+        this.menuVisible_2 = false;
+
+        // this.voiceMenu=null;
+        // this.mainMenu=null;
+
+        this.currentPlay = {url: '', urn: ''};
         this.currentLrc = '';
-        this.loaded = false;
+        // this.playTime = 0;
+        // this.totalTime = 0;
+        this.playInfo = null;
+        // this.playMode=0;
+
+        this.pauseTimer = false;
+        this.volumeTimer = false;
+        this.menuTimer = false;
+        this.menuTimer2 = false;
+        this.menuTimer3 = false;
+        this.breathTimer = false;
+
+        this.listDragStartY=false;
+        this.listDragTarget=false;
         this.radio = 0;
         this.shadowOp = 5;
+
+
         this.setBreath();
         //重制输入框状态
         document.getElementById('fileSelector').value = '';
@@ -552,7 +705,11 @@
           this.radio += 0.2;
           this.shadowOp = (Math.sin(this.radio) + 0.5) * 6;
         }, 100);
-      }
+      },
+      isActive(index){
+        const temp=(index === this.playIndex ? 'border:1px solid #000;' : 'border:1px solid transparent;');
+        return temp;
+      },
     },
     computed: {
       heightOp() {
@@ -582,8 +739,20 @@
           this.dragging = false;
           this.changeProgress(e.y);
         }
+        this.listDragTarget=false;
+        this.listDragStartY=false;
       });
-
+      window.onresize=()=>{
+        const menuRect = document.getElementById('mini-cover').getBoundingClientRect();
+        this.mainMenu = {
+          left: menuRect.left,
+          width: menuRect.width,
+          right: menuRect.right,
+          top: menuRect.top,
+          height: menuRect.height,
+          bottom: menuRect.bottom,
+        };
+      };
       //需要热更新时加注释
       // for (let i = 0; i < 40; i++) {
       //   clearInterval(i);
@@ -603,6 +772,74 @@
     user-select: none;
   }
 
+  .menu-list {
+    width: 170px;
+    height: 200px;
+    border-radius: 10px;
+    box-shadow: 0 0 8px #aaa;
+    position: absolute;
+    background: #fff;
+    right: 0;
+    bottom: 50px;
+  }
+
+  .menu-list-pointer {
+    width: 20px;
+    height: 20px;
+    transform: rotate(45deg);
+    background: #fff;
+    content: '';
+    display: block;
+    box-shadow: 2px 2px 2px #ddd;
+    position: relative;
+    top: 190px;
+    left: 92px;
+  }
+
+  .play-list-cover {
+    width: 170px;
+    height: 200px;
+    border-radius: 10px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    overflow: hidden;
+  }
+
+  .play-list {
+    overflow-y: scroll;
+    overflow-x: hidden;
+    width: 190px;
+    height: 195px;
+    position: absolute;
+    left: 0;
+    top: 2px;
+  }
+
+  .play-list .item {
+    color: #555;
+    font-size: 15px;
+    line-height: 30px;
+    padding-left: 10px;
+    width: 150px;
+    height: 30px;
+    /*margin-left: 5px;*/
+    /*margin-top: 5px;*/
+    /*margin-bottom: 5px;*/
+    border-radius: 5px;
+    box-shadow: 0 0 6px #e7e7e7;
+    transition: all 0.2s;
+    cursor: pointer;
+    position:absolute;
+    left:4px;
+
+  }
+
+  .play-list .item:hover {
+    color: white;
+    background: #64758e;
+  }
+
   .mini-cover {
     position: absolute;
     left: 50%;
@@ -611,7 +848,7 @@
     height: 40px;
     border-radius: 20px;
     background: #fcfcfc;
-    box-shadow: 0px 0px 4px #bbb;
+    box-shadow: 0 0 4px #bbb;
     transition: all 0.3s ease;
     overflow: hidden;
   }
@@ -641,6 +878,10 @@
     overflow: hidden;
     transition: all 0.3s;
     cursor: pointer;
+  }
+
+  .light {
+    box-shadow: 0 0 4px #eee;
   }
 
   .button:hover {
@@ -783,61 +1024,89 @@
     opacity: 0.2;
   }
 
-  .button-4 .mode-0{
-    margin-top:11px;
-    margin-left:11px;
-    height:12px;
-    width:12px;
+  .button-4 .mode-0 {
+    margin-top: 11px;
+    margin-left: 11px;
+    height: 12px;
+    width: 12px;
     border-radius: 50% 50% 50% 0;
-    border:2px solid #bbb;
-    color:#bbb;
+    border: 2px solid #C8C8C8;
+    color: #C8C8C8;
     font-weight: 800;
-    font-size:10px;
-    line-height:0px;
+    font-size: 10px;
+    line-height: 0px;
   }
-  .button-4 .mode-0:before{
+
+  .button-4 .mode-0:before {
     content: '';
-    display:block;
+    display: block;
     width: 0;
     height: 0;
-    border:5px solid transparent;
-    border-right-color:#bbb;
-    position:relative;
-    left:-6px;
-    top:8px;
+    border: 5px solid transparent;
+    border-right-color: #C8C8C8;
+    position: relative;
+    left: -6px;
+    top: 8px;
 
   }
 
-  .button-4 .mode-1 div{
-    position:absolute;
-    top:9px;
-    left:10px;
+  .button-4 .mode-1 div {
+    position: absolute;
+    top: 9px;
+    left: 10px;
     width: 12px;
     height: 8px;
-    border:2px solid #bbb;
+    border: 2px solid #C8C8C8;
     border-radius: 0 0 0 100%;
-    border-top:none;
-    border-right:none;
+    border-top: none;
+    border-right: none;
     transform: rotate(-25deg);
   }
-  .button-4 .mode-1 div:before{
+
+  .button-4 .mode-1 div:before {
     content: '';
     display: block;
     position: relative;
     width: 0;
     height: 0;
-    border:4px solid transparent;
-    border-left-color:#bbb;
-    left:12px;
-    top:5px;
+    border: 4px solid transparent;
+    border-left-color: #C8C8C8;
+    left: 12px;
+    top: 5px;
   }
-  .button-4 .mode-1 div:nth-child(1){
+
+  .button-4 .mode-1 div:nth-child(1) {
     transform: scaleY(-1) translateY(-12px) rotate(-25deg);
   }
 
-  .button-5 {
-
+  .button-5 div {
+    width: 15px;
+    height: 2px;
+    background: #C8C8C8;
+    margin-top: 18px;
+    margin-left: 12px;
   }
+
+  .button-5 div:before {
+    content: '';
+    display: block;
+    width: 15px;
+    height: 2px;
+    background: #C8C8C8;
+    position: relative;
+    top: -5px;
+  }
+
+  .button-5 div:after {
+    content: '';
+    display: block;
+    width: 15px;
+    height: 2px;
+    background: #C8C8C8;
+    position: relative;
+    top: 3px;
+  }
+
   .button-1 {
     position: absolute;
     left: 50%;
@@ -856,16 +1125,73 @@
     right: 1px;
     top: 1px;
   }
-  .button-4{
+
+  .button-4 {
     position: absolute;
-    left:50px;
-    top:1px;
+    left: 50px;
+    top: 1px;
   }
-  .button-5{
-    position:absolute;
-    right:50px;
-    top:1px;
+
+  .button-5 {
+    position: absolute;
+    right: 50px;
+    top: 1px;
   }
+
+  .mini-button-1 {
+    z-index: 100;
+    position: absolute;
+    top: -10px;
+    left: -12px;
+    transition: all 0.5s ease;
+    transform: rotate(0deg);
+  }
+
+  .mini-button-1 div {
+    width: 12px;
+    height: 4px;
+    border-radius: 10px;
+    margin-top: 12px;
+    margin-left: 8px;
+    background: #ddd;
+  }
+
+  .mini-button-1:hover {
+    transform: rotate(360deg);
+  }
+
+  .mini-button-1 div:before {
+    width: 4px;
+    height: 12px;
+    border-radius: 10px;
+    content: '';
+    display: block;
+    background: #ddd;
+    position: relative;
+    top: -4px;
+    left: 4px;
+  }
+
+  .mini-button-2 {
+    position: relative;
+    left: 120px;
+    top: -29px;
+  }
+
+  .mini-button-2 div {
+    width: 12px;
+    height: 4px;
+    border-radius: 10px;
+    position: relative;
+    top: 12px;
+    left: 8px;
+    background: #ddd;
+  }
+
+  .mini-button-2:hover {
+    transform: rotate(360deg);
+  }
+
   .volume {
     position: absolute;
     bottom: 0;
