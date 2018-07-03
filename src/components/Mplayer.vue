@@ -142,7 +142,7 @@
 
 <script>
   import {searchMusic, getLRC} from '../api'
-
+  import vue from 'vue'
   export default {
     name: "player",
     data() {
@@ -224,7 +224,9 @@
         listDragTarget:false,
         listDragDeltaY:false,
 
+        beforeDragUrn:'',
         hasDrag:false,
+        dragFin:false,
 
         radio: 0,
         shadowOp: 5,
@@ -273,19 +275,38 @@
           item.y=item.index*38+5;
         }
       },
+      //判断列表是否被拖动
       isDrag(index){
+        if(this.dragFin){
+          return 'transition:none;';
+        }
         if(index===parseInt(this.listDragTarget)){
           return `transition:none;z-index:200;`
         }
       },
       play(isFirst = false,index=null) {
         let flag=false,flag2=false;
-        if(typeof index==="number"&&!this.hasDrag){
-          this.listDragStartY=false;
-          this.listDragTarget=false;
+        if(this.hasDrag){
+          this.resetList();
+          this.setListY();
+          this.exchangeList();
+          let i=0;
+          for (const playListElement of this.playList) {
+            if(playListElement.urn===this.beforeDragUrn){
+              this.playIndex=i;
+            }
+            i++;
+          }
+          this.hasDrag=false;
+          this.dragFin=true;
+          setTimeout(()=>{
+            this.dragFin=false;
+          },500);
+        }else if(typeof index==="number"){
           this.playIndex=index;
           this.currentPlay=this.playList[index];
           flag=true;
+
         }else if (isFirst) {
           this.currentPlay = this.playList[0];
           flag=true;
@@ -327,6 +348,33 @@
         }
 
       },
+      resetList(){
+        let tempList=[],copyList=[...this.playList];
+        let i=0;
+        for (const copyListElement of copyList) {
+          copyListElement.i=i++;
+        }
+        const length=this.playList.length;
+        for (let i = 0; i < length; i++) {
+          let min = 0, minItem = copyList[0].y;
+          for (let j = 1; j < copyList.length; j++) {
+            if (copyList[j].y < minItem) {
+              min = j;
+              minItem = copyList[j].y;
+            }
+          }
+          tempList.push(copyList[min].i);
+          copyList.splice(min,1);
+        }
+        i=0;
+        for (const item of tempList) {
+          this.playList[i++].index=item;
+        }
+      },
+      exchangeList(){
+        this.playList.sort((a,b)=>a.index-b.index);
+
+      },
       goFront() {
         if(this.playMode===2) this.playIndex++;
         this.play();
@@ -350,12 +398,14 @@
             this.unloadFile();
           } else {
             this.playList.splice(index, 1);
+            this.resetList();
             this.setListY();
             this.playIndex -= 2;
             this.play();
           }
         } else {
           this.playList.splice(index, 1);
+          this.resetList();
           this.setListY();
         }
 
@@ -365,6 +415,7 @@
         this.listDragTarget=e.target.id;
         this.listDragDeltaY=e.target.offsetTop-e.y;
         this.listDragStartY=e.y;
+        this.beforeDragUrn=this.playList[this.playIndex].urn;
         this.hasDrag=false;
       },
       readerLoaded(res) {
@@ -422,9 +473,10 @@
             this.letMenuOut(e);
             if(this.listDragTarget){
               this.playList[this.listDragTarget].index=false;
+              this.resetList();
               this.setListY();
               this.playList[this.listDragTarget].y=e.y + this.listDragDeltaY;
-              if(Math.abs(e.y-this.listDragStartY)>15){
+              if(Math.abs(e.y-this.listDragStartY)>25){
                 this.hasDrag=true;
               }
             }
@@ -818,21 +870,20 @@
 
   .play-list .item {
     color: #555;
-    font-size: 15px;
+    font-size: 12px;
     line-height: 30px;
     padding-left: 10px;
     width: 150px;
     height: 30px;
-    /*margin-left: 5px;*/
-    /*margin-top: 5px;*/
-    /*margin-bottom: 5px;*/
     border-radius: 5px;
     box-shadow: 0 0 6px #e7e7e7;
     transition: all 0.2s;
     cursor: pointer;
     position:absolute;
     left:4px;
-
+    text-overflow:ellipsis;
+    white-space:nowrap;
+    overflow: hidden;
   }
 
   .play-list .item:hover {
