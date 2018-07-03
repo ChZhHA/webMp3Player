@@ -126,7 +126,7 @@
               >
                 {{index+1}}&nbsp;&nbsp;{{item.title}}
                 <div class="button-mini round mini-button-2"
-                     @click="removeList(index)"
+                     @click.stop="removeList(index)"
                 >
                   <div></div>
                 </div>
@@ -306,7 +306,6 @@
           this.playIndex=index;
           this.currentPlay=this.playList[index];
           flag=true;
-
         }else if (isFirst) {
           this.currentPlay = this.playList[0];
           flag=true;
@@ -407,6 +406,7 @@
           this.playList.splice(index, 1);
           this.resetList();
           this.setListY();
+
         }
 
 
