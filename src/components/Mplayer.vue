@@ -297,6 +297,7 @@
             }
             i++;
           }
+          this.beforeDragUrn=false;
           this.hasDrag=false;
           this.dragFin=true;
           setTimeout(()=>{
@@ -392,6 +393,7 @@
         this.menuVisible_2 = !this.menuVisible_2;
       },
       removeList(index) {
+        const beforeDragUrn=this.playList[this.playIndex].urn;
         if (index === this.playIndex) {
           if (this.playList.length === 1) {
             this.unloadFile();
@@ -408,7 +410,14 @@
           this.setListY();
 
         }
-
+        let i=0;
+        for (const playListElement of this.playList) {
+          if(playListElement.urn===beforeDragUrn){
+            this.playIndex=i;
+          }
+          i++;
+        }
+        this.beforeDragUrn=false;
 
       },
       listDragStart(e){
