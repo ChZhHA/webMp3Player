@@ -82,7 +82,7 @@
           </transition>
           <!--音量按钮/菜单-->
           <transition name="normalfade">
-            <div class="voice-menu"
+            <div class="volume"
                  v-show="menuVisible_0"
                  id="voice-menu"
                  @mouseover="entered"
@@ -91,9 +91,15 @@
                  @mousemove="volumeMove"
                  @mouseup="volumeUp"
             >
+            <div class="voice-menu"
+
+
+            >
               <div class="menu"></div>
-              <div class="volume" :style="'height:'+volume*90+'px;'">
-                <div class="menu active"></div>
+
+                <div class="menu active"
+                     :style="`transform:rotate(${(1-volume)*180}deg)`"
+                ></div>
               </div>
             </div>
           </transition>
@@ -119,6 +125,7 @@
           <div class="play-list-cover">
             <div class="play-list">
               <div class="item" v-for="(item,index) of playList"
+                   :key="item.urn"
                    :id="index"
                    @click="play(false,index)"
                    :style="isActive(index)+'top:'+item.y+'px;'+isDrag(index)"
@@ -320,7 +327,7 @@
               break;
             case 1: //随机模式
               let ram = this.playIndex;
-              for (; ram === this.playIndex; ram = Math.floor(Math.random() * this.totalList.length))
+              for (; ram === this.playIndex; ram = Math.floor(Math.random() * this.playList.length))
                 ;
               this.playIndex = ram;
               break;
@@ -757,8 +764,11 @@
       },
       //改变当前播放时间
       changeProgress(x) {
-        this.playTime = (x - this.mainMenu.left) / this.mainMenu.width * this.totalTime;
-        this.player.currentTime = this.playTime;
+        if(this.loaded){
+          this.playTime = (x - this.mainMenu.left) / this.mainMenu.width * this.totalTime;
+          this.player.currentTime = this.playTime;
+        }
+
       },
       //设定开始按钮呼吸
       setBreath() {
@@ -1254,36 +1264,42 @@
 
   .volume {
     position: absolute;
-    bottom: 0;
+    right: -30px;
+    top: -50px;
     width: 50px;
+    height:120px;
+    /*background: #000;*/
+
     overflow: hidden;
   }
 
   .voice-menu {
     position: absolute;
-    right: -25px;
-    top: -25px;
+    /*right: 0px;*/
+    top: 0px;
     /*background: #000;*/
-    overflow: hidden;
+    /*overflow: hidden;*/
     width: 50px;
     height: 90px;
+    transform:rotate(-45deg);
   }
 
   .voice-menu .menu {
     position: absolute;
-    left: -40px;
-
+    left: -56px;
     border-radius: 50%;
     width: 50px;
     height: 50px;
     border: 20px solid #eee;
     border-left-color: transparent;
+    border-top-color: transparent;
   }
 
   .voice-menu .active {
     bottom: 0;
     border-color: #a5cdff;
     border-left-color: transparent;
+    border-top-color: transparent;
   }
 
   .fade-leave-active {
